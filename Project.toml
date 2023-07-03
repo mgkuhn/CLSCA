@@ -1,0 +1,16 @@
+name = "CLSCA"
+uuid = "ced19f7f-8d5f-41ff-80e8-c690b18511a9"
+authors = ["Markus Kuhn <Markus.Kuhn@cl.cam.ac.uk>"]
+version = "0.1.0"
+
+[deps]
+DSP = "717857b8-e6f2-59f4-9121-6e50c889abd2"
+DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+Npy = "9d25cb4c-9dc9-11e9-18f5-3f5dc6fdeae0"
+
+[targets]
+test = ["Test", "Npy"]
