@@ -244,15 +244,16 @@ been enumerated without a match.
 function depth(e::KeyEnumerator, v::AbstractVector{V},
                maxdepth = nothing) where {V}
     e = deepcopy(e)
-    state = 0
-    while (r = iterate(e, state)) !== nothing
-        c, state = r
+    next = iterate(e)
+    while next !== nothing
+        (c, state) = next
         if compare(v, c)
             return state, c.p
         end
         if maxdepth !== nothing && state >= maxdepth
             return nothing
         end
+        next = iterate(e, state)
     end
     return nothing
 end
