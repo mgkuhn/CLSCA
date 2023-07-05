@@ -292,54 +292,100 @@ end
 using StatsBase
 using DSP
 
-# key rank estimation using histograms
-# https://link.springer.com/chapter/10.1007/978-3-662-48116-5_6
+"""
+    est, low, high = estimate_rank(p::AbstractMatrix{P}, v::AbstractMatrix{V},
+                                   k::AbstractVector{V};
+                                   tree=false, H=UInt128, bins=60000)
+
+Estimate the rank of a key formed by the `ns` subkeys in `k`, if each
+subkey `k[j]` can take on one of the `nv` values in `v[:,j]` and the
+logarithm of the probability of value `v[i,j]` is given by `p[i,j]`.
+
+The probabilities of the `ns` subkeys are assumed to be mutually
+independent.
+
+This function implements Algorithm 1 described in the paper [Glowaacz
+et al: Simpler and more efficient rank estimation for side-channel
+security
+assessment](https://link.springer.com/chapter/10.1007/978-3-662-48116-5_6).
+
+Some keyword parameters allow fine-tuning of algorithm parameters and
+variants, such as the rough number of histogram `bins`, the data type
+`H` of the histogram counters (and return value), and if convolution
+results are combined in a balanced `tree` or not.
+"""
 function estimate_rank(p::AbstractMatrix{P}, v::AbstractMatrix{V},
-                       k::AbstractVector{V}) where {P,V}
+                       k::AbstractVector{V};
+                       tree=false, H=UInt128, bins=60000) where {P,V}
     @assert size(p) == size(v)
     nv = size(p,1)  # number of values per subkey
     ns = size(p,2)  # number of subkeys
+
+    # copy, negate and normalize probabilities
+    p = -p
+    for j = axes(p,2)
+        p[:,j] .-= minimum(p[:,j])
+    end
 
     # calculate probability of k
     prob = zero(P)
     for d = axes(v,2)
         i = findfirst(isequal(k[d]), @view v[:,d])
-        prob -= p[i,d]
+        prob += p[i,d]
     end
 
     # build histogram of probabilities
-    #edges = StatsBase.histrange(-p[:], 100)
-    lo,hi = extrema(-p[:])
+    #edges = StatsBase.histrange(p[:], 100)
+    lo,hi = extrema(p[:])
     @assert lo == 0.0
-    step = round(hi / 60000, sigdigits=3, base=2)
+    step = round(hi / bins, sigdigits=3, base=2)
     edges = range(lo, hi+step; step)
 
     # find bin of probability
     #l = floor(Int, (prob - lo) / step) - 1
     l = findlast((x)->x<=prob, edges)
 
-    H = Int128      # datatype for histogram counters, also return value
-    # prepare histogram of probabilities for each subkey
+    # prepare a histogram of probabilities for each subkey
     h = [
-        let h = fit(Histogram{H}, -p[:,i], edges).weights
-        # truncate each histogram to remove trailing zeros,
-        # as well as any probabilities lower than that of the whole key
-        resize!(h, min(findlast(!iszero, h), l+ns))
+        let h = fit(Histogram{H}, p[:,i], edges).weights
+        # truncate each histogram to remove probabilities lower
+        # than that of the whole key, as well as trailing zeros
+        if length(h) > l+ns ; resize!(h, l+ns); end
+        resize!(h, findlast(!iszero, h))
+        @assert h[end] > 0
         #@assert sum(h) == nv
         h
         end
         for i = 1:ns
     ]
-    for i = 2:ns
-        h[1] = conv_direct(h[1], h[i])
-        if !isa(H, Integer); h[1] .= round.(h[1]); end # round float counts
+    # convolve all these histograms together
+    if !tree
+        # combine in a linear binary tree (seems a tiny bit faster)
+        for i = 2:ns
+            h[1] = conv_direct(h[1], h[i])
+            if length(h[1]) > l+ns ; resize!(h[1], l+ns); end
+            resize!(h[1], findlast(!iszero, h[1]))
+            if !isa(H, Integer); h[1] .= round.(h[1]); end # round float counts
+        end
+    else
+        # combine in a balanced binary tree
+        while length(h)>1
+            for i = 1:length(h)÷2
+                hh = conv_direct(h[i], h[i+1])
+                if length(hh) > l+ns ; resize!(hh, l+ns); end
+                resize!(hh, findlast(!iszero, hh))
+                if !isa(H, Integer); hh .= round.(hh); end # round float counts
+                splice!(h, i:i+1, [hh])
+            end
+        end
     end
     #@assert sum(UInt128.(hc)) == UInt128(size(p,2))^size(p,1)
 
-    # lookup probability in histogram
+    # lookup cumulative count for probability in resulting histogram
     hc = h[1]
-    low  = sum(view(hc, 1:l-ns))
-    est  = sum(view(hc, 1:l))
-    high = sum(view(hc, 1:l+ns))
+    low  = sum(view(hc, 1:min(l-ns,length(hc))))
+    est  = sum(view(hc, 1:min(l   ,length(hc))))
+    high = sum(view(hc, 1:min(l+ns,length(hc))))
+    @assert low <= est <= high
     return est, low, high
 end
