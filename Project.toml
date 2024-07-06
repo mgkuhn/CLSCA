@@ -9,8 +9,8 @@ DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 
 [extras]
+NPZ = "15e1cf62-19b3-5cfa-8e77-841668bca605"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-Npy = "9d25cb4c-9dc9-11e9-18f5-3f5dc6fdeae0"
 
 [targets]
-test = ["Test", "Npy"]
+test = ["Test", "NPZ"]
